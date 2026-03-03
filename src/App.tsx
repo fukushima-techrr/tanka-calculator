@@ -44,8 +44,9 @@ const calculate = (
     ? Math.round(inputRate / (1 + tax / 100))
     : inputRate;
 
-  const hourlyRateOver = baseRate / upper;
-  const hourlyRateUnder = baseRate / lower;
+  // 時間単価を10円未満切り捨て（基準時間から算定した結果に適用）
+  const hourlyRateOver = truncate10(baseRate / upper);
+  const hourlyRateUnder = truncate10(baseRate / lower);
 
   let excessHours = 0;
   let shortHours = 0;
@@ -127,8 +128,8 @@ const ResultSection: React.FC<{
           value={`${formatNumber(result.baseRateBeforeTax)}円`}
         />
       )}
-      <Row label="時間単価（超過）" value={`${formatNumber(Math.round(result.hourlyRateOver))}円/h`} />
-      <Row label="時間単価（控除）" value={`${formatNumber(Math.round(result.hourlyRateUnder))}円/h`} />
+      <Row label="時間単価（超過）" value={`${formatNumber(result.hourlyRateOver)}円/h`} />
+      <Row label="時間単価（控除）" value={`${formatNumber(result.hourlyRateUnder)}円/h`} />
 
       {result.excessHours > 0 && (
         <Row
@@ -401,7 +402,7 @@ function App() {
         )}
 
         <p className="text-xs text-slate-400 mt-4 text-center">
-          ※ 超過・控除金額のみ10円未満切り捨て
+          ※ 時間単価・超過控除金額は10円未満切り捨て
         </p>
       </div>
     </div>
