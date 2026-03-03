@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 
 /**
  * 端数処理：10円未満切り捨て
@@ -39,13 +39,13 @@ const calculate = (
 ): CalcResult | null => {
   if (inputRate === 0 || lower === 0 || upper === 0) return null;
 
-  // 税込入力の場合、税別金額を逆算（10円未満切り捨て）
+  // 税込入力の場合、税別金額を逆算
   const baseRate = isTaxIncluded
-    ? truncate10(inputRate / (1 + tax / 100))
+    ? Math.round(inputRate / (1 + tax / 100))
     : inputRate;
 
-  const hourlyRateOver = truncate10(baseRate / upper);
-  const hourlyRateUnder = truncate10(baseRate / lower);
+  const hourlyRateOver = baseRate / upper;
+  const hourlyRateUnder = baseRate / lower;
 
   let excessHours = 0;
   let shortHours = 0;
@@ -55,11 +55,12 @@ const calculate = (
     shortHours = lower - actual;
   }
 
+  // 超過・控除金額のみ10円未満切り捨て
   const excessAmount = truncate10(hourlyRateOver * excessHours);
   const deductionAmount = truncate10(-(hourlyRateUnder * shortHours));
   const adjustmentAmount = excessAmount + deductionAmount;
   const billingBeforeTax = baseRate + adjustmentAmount;
-  const taxAmount = truncate10(billingBeforeTax * (tax / 100));
+  const taxAmount = Math.floor(billingBeforeTax * (tax / 100));
   const billingAfterTax = billingBeforeTax + taxAmount;
 
   return {
@@ -126,8 +127,8 @@ const ResultSection: React.FC<{
           value={`${formatNumber(result.baseRateBeforeTax)}円`}
         />
       )}
-      <Row label="時間単価（超過）" value={`${formatNumber(result.hourlyRateOver)}円/h`} />
-      <Row label="時間単価（控除）" value={`${formatNumber(result.hourlyRateUnder)}円/h`} />
+      <Row label="時間単価（超過）" value={`${formatNumber(Math.round(result.hourlyRateOver))}円/h`} />
+      <Row label="時間単価（控除）" value={`${formatNumber(Math.round(result.hourlyRateUnder))}円/h`} />
 
       {result.excessHours > 0 && (
         <Row
@@ -174,6 +175,38 @@ const Row: React.FC<{
     </span>
   </div>
 );
+
+/** カンマ付き数値入力コンポーネント */
+const CommaInput: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}> = ({ value, onChange, className }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+
+  // 表示用：カンマ付き
+  const displayValue = isFocused ? value : formatNumber(Number(value) || 0);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    // 数字のみ許可（カンマは除去）
+    const raw = e.target.value.replace(/,/g, '').replace(/[^0-9]/g, '');
+    onChange(raw);
+  }, [onChange]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      inputMode="numeric"
+      value={displayValue}
+      onChange={handleChange}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      className={className}
+    />
+  );
+};
 
 function App() {
   // 共通入力
@@ -256,10 +289,9 @@ function App() {
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     月額単価（{orderTaxIncluded ? '税込' : '税別'}・円）
                   </label>
-                  <input
-                    type="number"
+                  <CommaInput
                     value={orderRate}
-                    onChange={(e) => setOrderRate(e.target.value)}
+                    onChange={setOrderRate}
                     className="w-full px-2 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right text-sm"
                   />
                 </div>
@@ -312,10 +344,9 @@ function App() {
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     月額単価（{payTaxIncluded ? '税込' : '税別'}・円）
                   </label>
-                  <input
-                    type="number"
+                  <CommaInput
                     value={payRate}
-                    onChange={(e) => setPayRate(e.target.value)}
+                    onChange={setPayRate}
                     className="w-full px-2 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-right text-sm"
                   />
                 </div>
