@@ -60,7 +60,7 @@ const calculate = (
   const deductionAmount = truncate10(-(hourlyRateUnder * shortHours));
   const adjustmentAmount = excessAmount + deductionAmount;
   const billingBeforeTax = baseRate + adjustmentAmount;
-  const taxAmount = Math.floor(billingBeforeTax * (tax / 100));
+  const taxAmount = Math.round(billingBeforeTax * (tax / 100));
   const billingAfterTax = billingBeforeTax + taxAmount;
 
   return {
@@ -401,7 +401,7 @@ function App() {
         )}
 
         <p className="text-xs text-slate-400 mt-4 text-center">
-          ※ 金額はすべて10円未満切り捨て
+          ※ 超過・控除金額のみ10円未満切り捨て
         </p>
       </div>
     </div>
