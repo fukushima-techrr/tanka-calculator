@@ -16,6 +16,12 @@ const formatNumber = (n: number): string => {
   return n.toLocaleString('ja-JP');
 };
 
+/** 単価入力を円に正規化（10,000未満なら万円入力と判断して×10,000） */
+const normalizeRate = (value: number): number => {
+  if (value > 0 && value < 10000) return value * 10000;
+  return value;
+};
+
 /** 単価ごとの計算結果 */
 interface CalcResult {
   hourlyRateOver: number;
@@ -214,29 +220,35 @@ function App() {
   const [actualHours, setActualHours] = useState<string>('170');
   const [taxRate, setTaxRate] = useState<string>('10');
 
+  // 共通：基準時間
+  const [baseLower, setBaseLower] = useState<string>('140');
+  const [baseUpper, setBaseUpper] = useState<string>('180');
+
   // 受注側
   const [orderRate, setOrderRate] = useState<string>('800000');
-  const [orderLower, setOrderLower] = useState<string>('140');
-  const [orderUpper, setOrderUpper] = useState<string>('180');
   const [orderTaxIncluded, setOrderTaxIncluded] = useState(false);
 
   // 支払い側
   const [payRate, setPayRate] = useState<string>('600000');
-  const [payLower, setPayLower] = useState<string>('140');
-  const [payUpper, setPayUpper] = useState<string>('180');
   const [payTaxIncluded, setPayTaxIncluded] = useState(false);
 
   const actual = Number(actualHours) || 0;
   const tax = Number(taxRate) || 0;
 
   // 計算
+  const lower = Number(baseLower) || 0;
+  const upper = Number(baseUpper) || 0;
+
+  const orderRateNormalized = normalizeRate(Number(orderRate) || 0);
+  const payRateNormalized = normalizeRate(Number(payRate) || 0);
+
   const orderResult = useMemo(() =>
-    calculate(Number(orderRate) || 0, Number(orderLower) || 0, Number(orderUpper) || 0, actual, tax, orderTaxIncluded),
-    [orderRate, orderLower, orderUpper, actual, tax, orderTaxIncluded]
+    calculate(orderRateNormalized, lower, upper, actual, tax, orderTaxIncluded),
+    [orderRateNormalized, lower, upper, actual, tax, orderTaxIncluded]
   );
   const payResult = useMemo(() =>
-    calculate(Number(payRate) || 0, Number(payLower) || 0, Number(payUpper) || 0, actual, tax, payTaxIncluded),
-    [payRate, payLower, payUpper, actual, tax, payTaxIncluded]
+    calculate(payRateNormalized, lower, upper, actual, tax, payTaxIncluded),
+    [payRateNormalized, lower, upper, actual, tax, payTaxIncluded]
   );
 
   // 粗利（受注税別 - 支払い税別）
@@ -253,7 +265,7 @@ function App() {
 
         {/* 共通入力 */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-5">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">実稼働時間（h）</label>
               <input
@@ -274,6 +286,27 @@ function App() {
               />
             </div>
           </div>
+          {/* 基準時間（共通） */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">基準時間（h）</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={baseLower}
+                  onChange={(e) => setBaseLower(e.target.value)}
+                  className="w-0 flex-1 min-w-0 px-1 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right text-sm"
+                />
+                <span className="text-slate-400 text-xs">〜</span>
+                <input
+                  type="number"
+                  value={baseUpper}
+                  onChange={(e) => setBaseUpper(e.target.value)}
+                  className="w-0 flex-1 min-w-0 px-1 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right text-sm"
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* 受注・支払い 2列 */}
@@ -285,34 +318,19 @@ function App() {
                 <h2 className="text-sm font-semibold text-indigo-600">受注</h2>
                 <TaxToggle value={orderTaxIncluded} onChange={setOrderTaxIncluded} color="indigo" />
               </div>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    月額単価（{orderTaxIncluded ? '税込' : '税別'}・円）
-                  </label>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  月額単価（{orderTaxIncluded ? '税込' : '税別'}）
+                </label>
+                <div className="flex items-center gap-1.5">
                   <CommaInput
                     value={orderRate}
                     onChange={setOrderRate}
                     className="w-full px-2 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right text-sm"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">基準時間（h）</label>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      value={orderLower}
-                      onChange={(e) => setOrderLower(e.target.value)}
-                      className="w-0 flex-1 min-w-0 px-1 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right text-sm"
-                    />
-                    <span className="text-slate-400 text-xs">〜</span>
-                    <input
-                      type="number"
-                      value={orderUpper}
-                      onChange={(e) => setOrderUpper(e.target.value)}
-                      className="w-0 flex-1 min-w-0 px-1 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right text-sm"
-                    />
-                  </div>
+                  <span className="text-xs text-slate-800 flex-shrink-0 w-6">
+                    {Number(orderRate) > 0 ? (Number(orderRate) < 10000 ? '万円' : '円') : ''}
+                  </span>
                 </div>
               </div>
             </div>
@@ -322,12 +340,12 @@ function App() {
                 <ResultSection
                   result={orderResult}
                   actual={actual}
-                  lower={Number(orderLower) || 0}
-                  upper={Number(orderUpper) || 0}
+                  lower={lower}
+                  upper={upper}
                   taxRate={taxRate}
                   color="indigo"
                   isTaxIncluded={orderTaxIncluded}
-                  inputRate={Number(orderRate) || 0}
+                  inputRate={orderRateNormalized}
                 />
               </div>
             )}
@@ -340,34 +358,19 @@ function App() {
                 <h2 className="text-sm font-semibold text-emerald-600">支払い</h2>
                 <TaxToggle value={payTaxIncluded} onChange={setPayTaxIncluded} color="emerald" />
               </div>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    月額単価（{payTaxIncluded ? '税込' : '税別'}・円）
-                  </label>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  月額単価（{payTaxIncluded ? '税込' : '税別'}）
+                </label>
+                <div className="flex items-center gap-1.5">
                   <CommaInput
                     value={payRate}
                     onChange={setPayRate}
                     className="w-full px-2 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-right text-sm"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">基準時間（h）</label>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      value={payLower}
-                      onChange={(e) => setPayLower(e.target.value)}
-                      className="w-0 flex-1 min-w-0 px-1 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-right text-sm"
-                    />
-                    <span className="text-slate-400 text-xs">〜</span>
-                    <input
-                      type="number"
-                      value={payUpper}
-                      onChange={(e) => setPayUpper(e.target.value)}
-                      className="w-0 flex-1 min-w-0 px-1 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-right text-sm"
-                    />
-                  </div>
+                  <span className="text-xs text-slate-800 flex-shrink-0 w-6">
+                    {Number(payRate) > 0 ? (Number(payRate) < 10000 ? '万円' : '円') : ''}
+                  </span>
                 </div>
               </div>
             </div>
@@ -377,12 +380,12 @@ function App() {
                 <ResultSection
                   result={payResult}
                   actual={actual}
-                  lower={Number(payLower) || 0}
-                  upper={Number(payUpper) || 0}
+                  lower={lower}
+                  upper={upper}
                   taxRate={taxRate}
                   color="emerald"
                   isTaxIncluded={payTaxIncluded}
-                  inputRate={Number(payRate) || 0}
+                  inputRate={payRateNormalized}
                 />
               </div>
             )}
