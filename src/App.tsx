@@ -39,9 +39,12 @@ interface CalcResult {
   baseRateBeforeTax: number;
 }
 
+/** 精算方法 */
+type SplitMethod = 'upper-lower' | 'center';
+
 /** 単価計算ロジック */
 const calculate = (
-  inputRate: number, lower: number, upper: number, actual: number, tax: number, isTaxIncluded: boolean
+  inputRate: number, lower: number, upper: number, actual: number, tax: number, isTaxIncluded: boolean, splitMethod: SplitMethod
 ): CalcResult | null => {
   if (inputRate === 0 || lower === 0 || upper === 0) return null;
 
@@ -50,9 +53,20 @@ const calculate = (
     ? Math.round(inputRate / (1 + tax / 100))
     : inputRate;
 
-  // 時間単価を10円未満切り捨て（基準時間から算定した結果に適用）
-  const hourlyRateOver = truncate10(baseRate / upper);
-  const hourlyRateUnder = truncate10(baseRate / lower);
+  // 時間単価を10円未満切り捨て
+  // 上下割：超過は上限、控除は下限で割る
+  // 中央割：超過・控除ともに中央値で割る
+  let hourlyRateOver: number;
+  let hourlyRateUnder: number;
+  if (splitMethod === 'center') {
+    const center = (lower + upper) / 2;
+    const hourlyRateCenter = truncate10(baseRate / center);
+    hourlyRateOver = hourlyRateCenter;
+    hourlyRateUnder = hourlyRateCenter;
+  } else {
+    hourlyRateOver = truncate10(baseRate / upper);
+    hourlyRateUnder = truncate10(baseRate / lower);
+  }
 
   let excessHours = 0;
   let shortHours = 0;
@@ -121,7 +135,8 @@ const ResultSection: React.FC<{
   color: 'indigo' | 'emerald';
   isTaxIncluded: boolean;
   inputRate: number;
-}> = ({ result, actual, lower, upper, taxRate, color, isTaxIncluded, inputRate }) => {
+  splitMethod: SplitMethod;
+}> = ({ result, actual, lower, upper, taxRate, color, isTaxIncluded, inputRate, splitMethod }) => {
   const bgClass = color === 'indigo' ? 'bg-indigo-50 border-indigo-100' : 'bg-emerald-50 border-emerald-100';
   const textClass = color === 'indigo' ? 'text-indigo-700' : 'text-emerald-700';
 
@@ -134,8 +149,15 @@ const ResultSection: React.FC<{
           value={`${formatNumber(result.baseRateBeforeTax)}円`}
         />
       )}
-      <Row label="時間単価（超過）" value={`${formatNumber(result.hourlyRateOver)}円/h`} />
-      <Row label="時間単価（控除）" value={`${formatNumber(result.hourlyRateUnder)}円/h`} />
+      {/* 中央割の場合は時間単価が同一なので1行にまとめる */}
+      {splitMethod === 'center' ? (
+        <Row label="時間単価（中央割）" value={`${formatNumber(result.hourlyRateOver)}円/h`} />
+      ) : (
+        <>
+          <Row label="時間単価（超過）" value={`${formatNumber(result.hourlyRateOver)}円/h`} />
+          <Row label="時間単価（控除）" value={`${formatNumber(result.hourlyRateUnder)}円/h`} />
+        </>
+      )}
 
       {result.excessHours > 0 && (
         <Row
@@ -220,9 +242,10 @@ function App() {
   const [actualHours, setActualHours] = useState<string>('170');
   const [taxRate, setTaxRate] = useState<string>('10');
 
-  // 共通：基準時間
+  // 共通：基準時間・精算方法
   const [baseLower, setBaseLower] = useState<string>('140');
   const [baseUpper, setBaseUpper] = useState<string>('180');
+  const [splitMethod, setSplitMethod] = useState<SplitMethod>('upper-lower');
 
   // 受注側
   const [orderRate, setOrderRate] = useState<string>('800000');
@@ -243,12 +266,12 @@ function App() {
   const payRateNormalized = normalizeRate(Number(payRate) || 0);
 
   const orderResult = useMemo(() =>
-    calculate(orderRateNormalized, lower, upper, actual, tax, orderTaxIncluded),
-    [orderRateNormalized, lower, upper, actual, tax, orderTaxIncluded]
+    calculate(orderRateNormalized, lower, upper, actual, tax, orderTaxIncluded, splitMethod),
+    [orderRateNormalized, lower, upper, actual, tax, orderTaxIncluded, splitMethod]
   );
   const payResult = useMemo(() =>
-    calculate(payRateNormalized, lower, upper, actual, tax, payTaxIncluded),
-    [payRateNormalized, lower, upper, actual, tax, payTaxIncluded]
+    calculate(payRateNormalized, lower, upper, actual, tax, payTaxIncluded, splitMethod),
+    [payRateNormalized, lower, upper, actual, tax, payTaxIncluded, splitMethod]
   );
 
   // 粗利（受注税別 - 支払い税別）
@@ -260,7 +283,7 @@ function App() {
     <div className="min-h-screen bg-slate-50 py-6 px-4">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-2xl font-bold text-slate-800 mb-5 text-center">
-          単価計算
+          SES電卓
         </h1>
 
         {/* 共通入力 */}
@@ -284,6 +307,32 @@ function App() {
                 onChange={(e) => setTaxRate(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right text-lg"
               />
+            </div>
+          </div>
+          {/* 精算方法 */}
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-slate-500 mb-2">精算方法</label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="splitMethod"
+                  checked={splitMethod === 'upper-lower'}
+                  onChange={() => setSplitMethod('upper-lower')}
+                  className="accent-indigo-600"
+                />
+                <span className="text-sm text-slate-700">上下割</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="splitMethod"
+                  checked={splitMethod === 'center'}
+                  onChange={() => setSplitMethod('center')}
+                  className="accent-indigo-600"
+                />
+                <span className="text-sm text-slate-700">中央割</span>
+              </label>
             </div>
           </div>
           {/* 基準時間（共通） */}
@@ -346,6 +395,7 @@ function App() {
                   color="indigo"
                   isTaxIncluded={orderTaxIncluded}
                   inputRate={orderRateNormalized}
+                  splitMethod={splitMethod}
                 />
               </div>
             )}
@@ -386,6 +436,7 @@ function App() {
                   color="emerald"
                   isTaxIncluded={payTaxIncluded}
                   inputRate={payRateNormalized}
+                  splitMethod={splitMethod}
                 />
               </div>
             )}
